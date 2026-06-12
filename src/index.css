@@ -1,0 +1,88 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'Barlow Condensed', sans-serif;
+  --font-sans: 'Barlow', sans-serif;
+
+  --color-primary: #2563eb;
+  --color-primary-dark: #1d4ed8;
+  --color-on-primary: #ffffff;
+  --color-secondary: #7c3aed;
+  --color-accent: #f59e0b;
+  --color-accent-dark: #d97706;
+  --color-pitch: #16a34a;
+  --color-background: #eff6ff;
+  --color-foreground: #0f172a;
+  --color-muted: #f1f5fd;
+  --color-border-soft: #e4ecfc;
+  --color-danger: #dc2626;
+
+  --color-gold: #fbbf24;
+  --color-silver: #cbd5e1;
+  --color-bronze: #d97706;
+
+  --animate-pop: pop 0.3s ease-out;
+  --animate-rise: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-shine: shine 2.5s linear infinite;
+
+  @keyframes pop {
+    0% { transform: scale(0.92); opacity: 0.6; }
+    60% { transform: scale(1.04); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes rise {
+    from { transform: translateY(16px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes shine {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+}
+
+html {
+  font-family: var(--font-sans);
+  background: var(--color-background);
+  color: var(--color-foreground);
+}
+
+body {
+  min-height: 100dvh;
+}
+
+/* Fondo del campo: degradado + patrón sutil de rombos */
+.stadium-bg {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(37, 99, 235, 0.18), transparent),
+    repeating-linear-gradient(45deg, rgba(37, 99, 235, 0.025) 0 14px, transparent 14px 28px),
+    var(--color-background);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Texto dorado con brillo animado para el campeón del podio */
+.gold-shine {
+  background: linear-gradient(110deg, #b45309 20%, #fde68a 40%, #fbbf24 50%, #fde68a 60%, #b45309 80%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: var(--animate-shine);
+}
+
+/* Transición suave de orden en el leaderboard */
+.lb-row {
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
