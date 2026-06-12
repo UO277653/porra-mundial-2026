@@ -31,9 +31,9 @@ export default function Login() {
       role="tab"
       aria-selected={mode === m}
       onClick={() => { setMode(m); setError(null) }}
-      className={`flex-1 rounded-xl py-2.5 font-display text-lg font-semibold uppercase tracking-wide transition-colors cursor-pointer ${
+      className={`cursor-pointer rounded-lg px-4 py-1.5 font-display text-base font-semibold uppercase tracking-wide transition-colors ${
         mode === m
-          ? 'bg-primary text-on-primary shadow-md'
+          ? 'bg-primary text-on-primary shadow-sm'
           : 'text-slate-500 hover:bg-muted'
       }`}
     >
@@ -42,23 +42,22 @@ export default function Login() {
   )
 
   return (
-    <div className="animate-rise mx-auto w-full max-w-sm rounded-3xl border-2 border-border-soft bg-white p-6 shadow-xl shadow-blue-100">
-      <div className="mb-5 text-center">
-        <h2 className="font-display text-3xl font-bold uppercase tracking-wide text-foreground">
+    <div className="animate-rise mx-auto w-full max-w-3xl rounded-2xl border-2 border-border-soft bg-white p-4 shadow-lg shadow-blue-100 sm:p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <h2 className="font-display text-2xl font-bold uppercase tracking-wide text-foreground">
           ¿Quién apuesta?
+          <span className="ml-3 hidden text-sm font-normal normal-case tracking-normal text-slate-400 lg:inline">
+            Tu nombre + un PIN para que nadie apueste por ti
+          </span>
         </h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Tu nombre + un PIN para que nadie apueste por ti.
-        </p>
+        <div className="flex gap-1 rounded-xl bg-slate-100 p-1" role="tablist">
+          {tab('login', 'Entrar')}
+          {tab('register', 'Crear cuenta')}
+        </div>
       </div>
 
-      <div className="mb-5 flex gap-1 rounded-2xl bg-slate-100 p-1" role="tablist">
-        {tab('login', 'Entrar')}
-        {tab('register', 'Crear cuenta')}
-      </div>
-
-      <form onSubmit={submit} className="space-y-4" noValidate>
-        <div>
+      <form onSubmit={submit} className="flex flex-col gap-3 md:flex-row md:items-end" noValidate>
+        <div className="min-w-0 flex-1">
           <label htmlFor="login-name" className="mb-1 block text-sm font-semibold text-slate-700">
             Tu nombre
           </label>
@@ -70,15 +69,15 @@ export default function Login() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="p. ej. Adrián"
-            className="w-full rounded-xl border-2 border-border-soft bg-muted px-4 py-3 text-base outline-none transition-colors focus:border-primary focus:bg-white"
+            className="w-full rounded-xl border-2 border-border-soft bg-muted px-4 py-2.5 text-base outline-none transition-colors focus:border-primary focus:bg-white"
           />
         </div>
-        <div>
+        <div className="md:w-44">
           <label htmlFor="login-pin" className="mb-1 block text-sm font-semibold text-slate-700">
             PIN (4-6 dígitos)
           </label>
           <div className="relative">
-            <KeyRound aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+            <KeyRound aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4.5 -translate-y-1/2 text-slate-400" />
             <input
               id="login-pin"
               type="password"
@@ -88,26 +87,14 @@ export default function Login() {
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
               placeholder="••••"
-              className="w-full rounded-xl border-2 border-border-soft bg-muted py-3 pl-12 pr-4 text-base tracking-[0.4em] outline-none transition-colors focus:border-primary focus:bg-white"
+              className="w-full rounded-xl border-2 border-border-soft bg-muted py-2.5 pl-11 pr-3 text-base tracking-[0.3em] outline-none transition-colors focus:border-primary focus:bg-white"
             />
           </div>
-          {mode === 'register' && (
-            <p className="mt-1 text-xs text-slate-500">
-              Invéntate uno fácil de recordar: lo necesitarás para entrar.
-            </p>
-          )}
         </div>
-
-        {error && (
-          <p role="alert" className="rounded-xl bg-red-50 px-4 py-2.5 text-sm font-medium text-danger">
-            {error}
-          </p>
-        )}
-
         <button
           type="submit"
           disabled={busy}
-          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-accent py-3.5 font-display text-xl font-bold uppercase tracking-wide text-white shadow-lg shadow-amber-200 transition-all hover:bg-accent-dark active:scale-[0.98] disabled:opacity-50"
+          className="flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-accent px-6 py-2.5 font-display text-lg font-bold uppercase tracking-wide text-white shadow-md shadow-amber-200 transition-all hover:bg-accent-dark active:scale-[0.98] disabled:opacity-50"
         >
           {busy ? (
             <Loader2 aria-hidden="true" className="size-5 animate-spin" />
@@ -119,6 +106,17 @@ export default function Login() {
           {mode === 'login' ? 'A jugar' : 'Crear y entrar'}
         </button>
       </form>
+
+      {mode === 'register' && !error && (
+        <p className="mt-2 text-xs text-slate-500">
+          Invéntate un PIN fácil de recordar: lo necesitarás para entrar.
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="mt-3 rounded-xl bg-red-50 px-4 py-2 text-sm font-medium text-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
