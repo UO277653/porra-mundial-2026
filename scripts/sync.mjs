@@ -7,8 +7,6 @@
 //   SUPABASE_URL               URL del proyecto Supabase
 //   SUPABASE_SERVICE_ROLE_KEY  clave service_role (¡solo en secretos, nunca en el frontend!)
 
-import { createClient } from '@supabase/supabase-js'
-
 const { FOOTBALL_DATA_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env
 
 for (const [name, value] of Object.entries({ FOOTBALL_DATA_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY })) {
@@ -79,12 +77,22 @@ async function main() {
     updated_at: new Date().toISOString(),
   }))
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-  // Subimos en bloques para no pasarnos de tamaño de petición
+  // Upsert directo vía la API REST de Supabase (merge-duplicates = upsert por clave primaria)
   for (let i = 0; i < rows.length; i += 100) {
     const chunk = rows.slice(i, i + 100)
-    const { error } = await supabase.from('matches').upsert(chunk)
-    if (error) throw new Error(`Error guardando en Supabase: ${error.message}`)
+    const up = await fetch(`${SUPABASE_URL}/rest/v1/matches`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify(chunk),
+    })
+    if (!up.ok) {
+      throw new Error(`Error guardando en Supabase (${up.status}): ${await up.text()}`)
+    }
   }
   console.log(`Sincronizados ${rows.length} partidos ✔`)
 }
