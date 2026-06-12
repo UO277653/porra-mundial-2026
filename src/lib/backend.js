@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { DEMO_MODE, SUPABASE_URL, SUPABASE_ANON_KEY } from './config'
-import { buildDemoMatches, DEMO_PLAYERS, DEMO_BETS } from './demoData'
-import { hasStarted, isBettable } from './scoring'
+import { buildDemoMatches, DEMO_PLAYERS, DEMO_BETS, DEMO_SETTINGS, DEMO_REACTIONS } from './demoData'
+import { hasStarted, isBettable, isFinished, computeLeaderboard } from './scoring'
+import { blobToDataUrl } from './image'
 
 // ─────────────────────────────────────────────────────────────
 // Backend con dos implementaciones intercambiables:
@@ -35,14 +36,56 @@ function makeSupabaseBackend() {
     },
 
     async fetchAll() {
-      const [players, matches, bets] = await Promise.all([
+      const [players, matches, bets, settings, reactions] = await Promise.all([
         supabase.from('players').select('id,name').order('name'),
         supabase.from('matches').select('*').order('utc_date'),
         supabase.from('bets').select('player_id,match_id,pick'),
+        supabase.from('app_settings').select('*').eq('id', 1).maybeSingle(),
+        supabase.from('reactions').select('player_id,match_id,emoji'),
       ])
       const err = players.error || matches.error || bets.error
       if (err) throw new Error(translate(err.message))
-      return { players: players.data, matches: matches.data, bets: bets.data }
+      // settings/reactions pueden no existir aún (SQL del trono sin ejecutar):
+      // en ese caso la app funciona igual, solo sin esas funciones
+      return {
+        players: players.data,
+        matches: matches.data,
+        bets: bets.data,
+        settings: settings.error ? null : settings.data,
+        reactions: reactions.error ? [] : reactions.data,
+      }
+    },
+
+    // Sube una foto (ya comprimida) al bucket público y devuelve su URL
+    async uploadCrownPhoto(session, blob) {
+      const path = `trono/${session.id}-${Date.now()}.jpg`
+      const { error } = await supabase.storage.from('porra').upload(path, blob, {
+        contentType: 'image/jpeg',
+      })
+      if (error) throw new Error(translate(error.message))
+      const { data } = supabase.storage.from('porra').getPublicUrl(path)
+      return data.publicUrl
+    },
+
+    async react(session, matchId, emoji) {
+      const { error } = await supabase.rpc('react', {
+        p_player: session.id,
+        p_pin: session.pin,
+        p_match: matchId,
+        p_emoji: emoji ?? '',
+      })
+      if (error) throw new Error(translate(error.message))
+    },
+
+    async setThrone(session, { message, gif, title }) {
+      const { error } = await supabase.rpc('set_throne', {
+        p_player: session.id,
+        p_pin: session.pin,
+        p_message: message ?? '',
+        p_gif: gif ?? '',
+        p_title: title ?? '',
+      })
+      if (error) throw new Error(translate(error.message))
     },
 
     async fetchMyBets(session) {
@@ -70,7 +113,7 @@ function makeSupabaseBackend() {
         .channel('porra-cambios')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, onChange)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, onChange)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, onChange)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, onChange)
         .subscribe()
       return () => supabase.removeChannel(channel)
     },
@@ -95,11 +138,17 @@ function makeDemoBackend() {
 
   const load = () => {
     try {
-      return JSON.parse(localStorage.getItem(DEMO_KEY)) || { players: [], bets: [] }
+      const state = JSON.parse(localStorage.getItem(DEMO_KEY))
+      return { players: [], bets: [], settings: null, reactions: [], ...(state || {}) }
     } catch {
-      return { players: [], bets: [] }
+      return { players: [], bets: [], settings: null, reactions: [] }
     }
   }
+
+  const allPlayers = (state) => [
+    ...DEMO_PLAYERS,
+    ...state.players.map(({ id, name }) => ({ id, name })),
+  ]
   const save = (state) => {
     localStorage.setItem(DEMO_KEY, JSON.stringify(state))
     listeners.forEach((fn) => fn())
@@ -131,14 +180,52 @@ function makeDemoBackend() {
 
     async fetchAll() {
       const state = load()
-      const players = [...DEMO_PLAYERS, ...state.players.map(({ id, name }) => ({ id, name }))]
+      const players = allPlayers(state)
       const byId = new Map(matches.map((m) => [m.id, m]))
       // Igual que en producción: el pick de los demás solo se ve tras el pitido inicial
       const bets = [...DEMO_BETS, ...state.bets].map((b) => {
         const m = byId.get(b.match_id)
         return m && hasStarted(m) ? b : { ...b, pick: null }
       })
-      return { players, matches, bets }
+      return {
+        players,
+        matches,
+        bets,
+        settings: state.settings || DEMO_SETTINGS,
+        reactions: [...DEMO_REACTIONS, ...state.reactions],
+      }
+    },
+
+    async setThrone(session, { message, gif, title }) {
+      const state = load()
+      const board = computeLeaderboard(allPlayers(state), matches, [...DEMO_BETS, ...state.bets])
+      if (board[0]?.player.id !== session.id) {
+        throw new Error('Solo el líder de la porra puede hacer esto. ¡Gana partidos!')
+      }
+      state.settings = {
+        title: (title || '').trim().slice(0, 40) || null,
+        title_by: (title || '').trim() ? session.id : null,
+        crown_message: (message || '').trim().slice(0, 80) || null,
+        crown_gif: (gif || '').trim() || null,
+        crown_message_by: session.id,
+      }
+      save(state)
+    },
+
+    // En demo la foto se guarda como data-URL en el propio navegador
+    async uploadCrownPhoto(_session, blob) {
+      return blobToDataUrl(blob)
+    },
+
+    async react(session, matchId, emoji) {
+      const m = matches.find((x) => x.id === matchId)
+      if (!m || !isFinished(m)) throw new Error('Solo se puede reaccionar a partidos acabados')
+      const state = load()
+      state.reactions = state.reactions.filter(
+        (r) => !(r.player_id === session.id && r.match_id === matchId),
+      )
+      if (emoji) state.reactions.push({ player_id: session.id, match_id: matchId, emoji })
+      save(state)
     },
 
     async fetchMyBets(session) {

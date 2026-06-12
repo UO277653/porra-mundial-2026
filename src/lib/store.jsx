@@ -16,16 +16,20 @@ export function StoreProvider({ children }) {
   const [players, setPlayers] = useState([])
   const [matches, setMatches] = useState([])
   const [bets, setBets] = useState([])
+  const [settings, setSettings] = useState(null)
+  const [reactions, setReactions] = useState([])
   const [myBets, setMyBets] = useState(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   const refresh = useCallback(async (currentSession) => {
     try {
-      const { players, matches, bets } = await backend.fetchAll()
+      const { players, matches, bets, settings, reactions } = await backend.fetchAll()
       setPlayers(players)
       setMatches(matches)
       setBets(bets)
+      setSettings(settings || null)
+      setReactions(reactions || [])
       const s = currentSession !== undefined ? currentSession : readSession()
       if (s) {
         try {
@@ -92,6 +96,23 @@ export function StoreProvider({ children }) {
     refresh(session)
   }
 
+  const setThrone = async (fields) => {
+    if (!session) throw new Error('Inicia sesión.')
+    await backend.setThrone(session, fields)
+    await refresh(session)
+  }
+
+  const uploadCrownPhoto = async (blob) => {
+    if (!session) throw new Error('Inicia sesión.')
+    return backend.uploadCrownPhoto(session, blob)
+  }
+
+  const react = async (matchId, emoji) => {
+    if (!session) throw new Error('Inicia sesión para reaccionar.')
+    await backend.react(session, matchId, emoji)
+    await refresh(session)
+  }
+
   const leaderboard = useMemo(
     () => computeLeaderboard(players, matches, bets),
     [players, matches, bets],
@@ -104,6 +125,8 @@ export function StoreProvider({ children }) {
     matches,
     bets,
     myBets,
+    settings,
+    reactions,
     leaderboard,
     loading,
     error,
@@ -111,6 +134,9 @@ export function StoreProvider({ children }) {
     login,
     logout,
     placeBet,
+    setThrone,
+    uploadCrownPhoto,
+    react,
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

@@ -162,8 +162,185 @@ grant execute on function
   public.my_bets(uuid, text)
 to anon, authenticated;
 
+-- ── El trono: privilegios del líder ─────────────────────────
+-- El nº 1 de la clasificación puede poner un mensaje/GIF en un
+-- bocadillo sobre su nombre y renombrar la porra. El servidor
+-- recalcula quién es el líder antes de aceptar nada.
+
+create table if not exists public.app_settings (
+  id int primary key default 1 check (id = 1),
+  title text,
+  title_by uuid references public.players (id) on delete set null,
+  crown_message text,
+  crown_gif text,
+  crown_message_by uuid references public.players (id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+insert into public.app_settings (id) values (1) on conflict do nothing;
+
+alter table public.app_settings enable row level security;
+drop policy if exists settings_read on public.app_settings;
+create policy settings_read on public.app_settings for select using (true);
+
+-- Líder actual: misma lógica de puntos que el frontend
+-- (1 punto grupos / 2 eliminatorias; desempate por aciertos y nombre)
+create or replace function public.current_leader()
+returns uuid
+language sql stable security definer set search_path = public
+as $$
+  with points as (
+    select
+      b.player_id,
+      case
+        when b.pick = case
+          when m.stage <> 'GROUP_STAGE' then
+            case m.winner when 'HOME_TEAM' then '1' when 'AWAY_TEAM' then '2' else null end
+          when m.home_score > m.away_score then '1'
+          when m.home_score < m.away_score then '2'
+          else 'X'
+        end
+        then case when m.stage <> 'GROUP_STAGE' then 2 else 1 end
+        else 0
+      end as pts
+    from bets b
+    join matches m on m.id = b.match_id and m.status = 'FINISHED'
+  ),
+  totals as (
+    select player_id, sum(pts) as total, count(*) filter (where pts > 0) as hits
+    from points group by player_id
+  )
+  select p.id
+  from players p
+  left join totals t on t.player_id = p.id
+  order by coalesce(t.total, 0) desc, coalesce(t.hits, 0) desc, lower(p.name) asc
+  limit 1;
+$$;
+
+create or replace function public.set_throne(
+  p_player uuid, p_pin text, p_message text, p_gif text, p_title text
+)
+returns void
+language plpgsql security definer set search_path = public, extensions
+as $$
+begin
+  if not exists (
+    select 1 from players
+    where id = p_player and pin_hash = crypt(p_pin, pin_hash)
+  ) then
+    raise exception 'PIN incorrecto';
+  end if;
+  if current_leader() is distinct from p_player then
+    raise exception 'Solo el líder de la porra puede hacer esto. ¡Gana partidos!';
+  end if;
+  if length(coalesce(p_message, '')) > 80 then
+    raise exception 'El mensaje no puede pasar de 80 caracteres';
+  end if;
+  if length(coalesce(p_title, '')) > 40 then
+    raise exception 'El nombre de la porra no puede pasar de 40 caracteres';
+  end if;
+  if coalesce(p_gif, '') <> '' and p_gif !~ '^https://\S+$' then
+    raise exception 'El GIF debe ser un enlace https válido';
+  end if;
+  if length(coalesce(p_gif, '')) > 300 then
+    raise exception 'El enlace del GIF es demasiado largo';
+  end if;
+
+  update app_settings set
+    crown_message = nullif(trim(p_message), ''),
+    crown_gif = nullif(trim(p_gif), ''),
+    crown_message_by = p_player,
+    title = nullif(trim(p_title), ''),
+    title_by = case when nullif(trim(p_title), '') is null then null else p_player end,
+    updated_at = now()
+  where id = 1;
+end
+$$;
+
+grant execute on function
+  public.current_leader(),
+  public.set_throne(uuid, text, text, text, text)
+to anon, authenticated;
+
+-- Fotos del bocadillo: bucket público con límite de 2 MB por archivo
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('porra', 'porra', true, 2097152, array['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+on conflict (id) do update
+  set public = true,
+      file_size_limit = 2097152,
+      allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+drop policy if exists porra_media_read on storage.objects;
+create policy porra_media_read on storage.objects
+  for select to anon, authenticated using (bucket_id = 'porra');
+drop policy if exists porra_media_upload on storage.objects;
+create policy porra_media_upload on storage.objects
+  for insert to anon, authenticated with check (bucket_id = 'porra');
+
+-- ── Reacciones a la actividad (partidos acabados) ───────────
+
+create table if not exists public.reactions (
+  id bigserial primary key,
+  player_id uuid not null references public.players (id) on delete cascade,
+  match_id bigint not null references public.matches (id) on delete cascade,
+  emoji text not null,
+  created_at timestamptz not null default now(),
+  unique (player_id, match_id)
+);
+
+alter table public.reactions enable row level security;
+drop policy if exists reactions_read on public.reactions;
+create policy reactions_read on public.reactions for select using (true);
+
+create or replace function public.react(
+  p_player uuid, p_pin text, p_match bigint, p_emoji text
+)
+returns void
+language plpgsql security definer set search_path = public, extensions
+as $$
+begin
+  if not exists (
+    select 1 from players
+    where id = p_player and pin_hash = crypt(p_pin, pin_hash)
+  ) then
+    raise exception 'PIN incorrecto';
+  end if;
+
+  -- Emoji vacío = quitar tu reacción
+  if coalesce(p_emoji, '') = '' then
+    delete from reactions where player_id = p_player and match_id = p_match;
+    return;
+  end if;
+
+  if p_emoji not in ('😂', '😭', '🔥', '👏', '💀', '🤡', '😱', '❤️') then
+    raise exception 'Reacción no válida';
+  end if;
+  if not exists (select 1 from matches where id = p_match and status = 'FINISHED') then
+    raise exception 'Solo se puede reaccionar a partidos acabados';
+  end if;
+
+  insert into reactions (player_id, match_id, emoji)
+  values (p_player, p_match, p_emoji)
+  on conflict (player_id, match_id)
+  do update set emoji = excluded.emoji, created_at = now();
+end
+$$;
+
+grant execute on function public.react(uuid, text, bigint, text) to anon, authenticated;
+
 -- ── Tiempo real ─────────────────────────────────────────────
 -- (players se queda fuera a propósito para no emitir nunca el pin_hash)
+
+do $$
+begin
+  alter publication supabase_realtime add table public.app_settings;
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.reactions;
+exception when duplicate_object then null;
+end $$;
 
 do $$
 begin

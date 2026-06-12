@@ -99,6 +99,23 @@ export const DEMO_PLAYERS = [
   { id: 'demo-pablo', name: 'Pablo' },
 ]
 
+// El trono en la demo: Laura va primera y presume de ello
+export const DEMO_SETTINGS = {
+  title: 'La porra de los pringados',
+  title_by: 'demo-laura',
+  crown_message: '¿Apostáis o decoráis? 😏👑',
+  crown_gif: null,
+  crown_message_by: 'demo-laura',
+}
+
+// Reacciones de ejemplo a los partidos acabados
+export const DEMO_REACTIONS = [
+  { player_id: 'demo-carlos', match_id: 1, emoji: '😭' },
+  { player_id: 'demo-laura', match_id: 1, emoji: '🔥' },
+  { player_id: 'demo-pablo', match_id: 7, emoji: '👏' },
+  { player_id: 'demo-marta', match_id: 13, emoji: '😂' },
+]
+
 // Apuestas de los jugadores de ejemplo sobre los primeros partidos
 export const DEMO_BETS = [
   { player_id: 'demo-laura', match_id: 1, pick: '1' },

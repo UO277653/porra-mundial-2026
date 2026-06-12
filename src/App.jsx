@@ -1,21 +1,23 @@
 import { useEffect, useState } from 'react'
-import { CalendarDays, Table2, GitFork, Trophy, LogOut, Loader2, FlaskConical } from 'lucide-react'
+import { CalendarDays, Table2, GitFork, Trophy, LogOut, Loader2, FlaskConical, Newspaper } from 'lucide-react'
 import { useStore } from './lib/store'
 import Login from './components/Login'
 import Matches from './components/Matches'
 import Groups from './components/Groups'
 import Bracket from './components/Bracket'
 import Leaderboard from './components/Leaderboard'
+import Activity from './components/Activity'
 
 const TABS = [
   { key: 'matches', label: 'Partidos', icon: CalendarDays, component: Matches },
+  { key: 'activity', label: 'Actividad', icon: Newspaper, component: Activity },
   { key: 'groups', label: 'Grupos', icon: Table2, component: Groups },
   { key: 'bracket', label: 'Cuadro', icon: GitFork, component: Bracket },
   { key: 'leaderboard', label: 'Clasificación', icon: Trophy, component: Leaderboard },
 ]
 
 export default function App() {
-  const { session, logout, loading, error, demo, leaderboard } = useStore()
+  const { session, logout, loading, error, demo, leaderboard, settings } = useStore()
   // La pestaña vive en el hash de la URL (#groups, #leaderboard…) para poder compartir enlaces
   const [tab, setTabState] = useState(() => {
     const hash = window.location.hash.replace('#', '')
@@ -48,9 +50,19 @@ export default function App() {
             <h1 className="truncate font-display text-3xl font-extrabold uppercase italic tracking-wide sm:text-4xl">
               Porra Mundial <span className="text-accent">2026</span>
             </h1>
-            <p className="hidden text-sm text-blue-100 sm:block">
-              La porra de la oficina · sin dinero, solo honor
-            </p>
+            {/* El líder puede renombrar la porra: su título sustituye al lema */}
+            {settings?.title ? (
+              <p className="truncate text-sm font-semibold text-amber-300">
+                «{settings.title}»
+                {settings.title_by &&
+                  leaderboard.find((r) => r.player.id === settings.title_by) &&
+                  ` — por ${leaderboard.find((r) => r.player.id === settings.title_by).player.name}`}
+              </p>
+            ) : (
+              <p className="hidden text-sm text-blue-100 sm:block">
+                La porra de la oficina · sin dinero, solo honor
+              </p>
+            )}
           </div>
           {session && (
             <div className="flex shrink-0 items-center gap-3">
