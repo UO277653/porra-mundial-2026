@@ -7,6 +7,7 @@ import Groups from './components/Groups'
 import Bracket from './components/Bracket'
 import Leaderboard from './components/Leaderboard'
 import Activity from './components/Activity'
+import ShitpostOverlay from './components/ShitpostOverlay'
 
 const TABS = [
   { key: 'matches', label: 'Partidos', icon: CalendarDays, component: Matches },
@@ -18,6 +19,7 @@ const TABS = [
 
 export default function App() {
   const { session, logout, loading, error, demo, leaderboard, settings } = useStore()
+  const [shitpost, setShitpost] = useState(false)
   // La pestaña vive en el hash de la URL (#groups, #leaderboard…) para poder compartir enlaces
   const [tab, setTabState] = useState(() => {
     const hash = window.location.hash.replace('#', '')
@@ -43,12 +45,16 @@ export default function App() {
 
   return (
     <div className="stadium-bg min-h-dvh">
+      <ShitpostOverlay active={shitpost} />
+
       {/* Cabecera */}
-      <header className="bg-gradient-to-r from-primary-dark via-primary to-secondary text-white shadow-lg">
+      <header className={`text-white shadow-lg ${shitpost ? 'shitpost-header' : 'bg-gradient-to-r from-primary-dark via-primary to-secondary'}`}>
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4 sm:py-5">
           <div className="min-w-0">
             <h1 className="truncate font-display text-3xl font-extrabold uppercase italic tracking-wide sm:text-4xl">
+              {shitpost && <span style={{ fontSize: '0.85em' }}>🕶️ </span>}
               Porra Mundial <span className="text-accent">2026</span>
+              {shitpost && <span style={{ fontSize: '0.85em' }}> 🕶️</span>}
             </h1>
             {/* El líder puede renombrar la porra: su título sustituye al lema */}
             {settings?.title ? (
@@ -91,23 +97,40 @@ export default function App() {
 
         {/* Navegación */}
         <nav className="mx-auto max-w-5xl px-4" aria-label="Secciones">
-          <div className="flex gap-1 overflow-x-auto pb-3">
-            {TABS.map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setTab(key)}
-                aria-current={tab === key ? 'page' : undefined}
-                className={`flex shrink-0 cursor-pointer items-center gap-2 rounded-xl px-4 py-2.5 font-display text-base font-semibold uppercase tracking-wide transition-colors sm:text-lg ${
-                  tab === key
-                    ? 'bg-white text-primary shadow-md'
-                    : 'text-blue-100 hover:bg-white/15'
-                }`}
-              >
-                <Icon aria-hidden="true" className="size-4.5" />
-                {label}
-              </button>
-            ))}
+          <div className="flex items-end gap-2 pb-3">
+            {/* Tabs — scroll horizontal solo en este trozo */}
+            <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+              {TABS.map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTab(key)}
+                  aria-current={tab === key ? 'page' : undefined}
+                  className={`flex shrink-0 cursor-pointer items-center gap-2 rounded-xl px-4 py-2.5 font-display text-base font-semibold uppercase tracking-wide transition-colors sm:text-lg ${
+                    tab === key
+                      ? 'bg-white text-primary shadow-md'
+                      : 'text-blue-100 hover:bg-white/15'
+                  }`}
+                >
+                  <Icon aria-hidden="true" className="size-4.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Botón modo SHITPOST — fuera del scroll */}
+            <button
+              type="button"
+              onClick={() => setShitpost((v) => !v)}
+              title={shitpost ? 'Desactivar modo shitpost' : 'Activar modo shitpost'}
+              className={`flex shrink-0 cursor-pointer items-center gap-2 rounded-xl px-4 py-2.5 font-display text-base font-semibold uppercase tracking-wide transition-all sm:text-lg ${
+                shitpost
+                  ? 'bg-yellow-400 text-black shadow-lg scale-105'
+                  : 'text-blue-100 hover:bg-white/15'
+              }`}
+            >
+              {shitpost ? '💀 MODO ON' : '🥁 Shitpost'}
+            </button>
           </div>
         </nav>
       </header>
