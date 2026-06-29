@@ -1,7 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 import { DEMO_MODE, SUPABASE_URL, SUPABASE_ANON_KEY } from './config'
 import { buildDemoMatches, DEMO_PLAYERS, DEMO_BETS, DEMO_SETTINGS, DEMO_REACTIONS } from './demoData'
-import { hasStarted, isBettable, isFinished, computeLeaderboard } from './scoring'
+import {
+  hasStarted,
+  isBettable,
+  isFinished,
+  computeLeaderboard,
+  groupOnly,
+  knockoutOnly,
+} from './scoring'
 import { blobToDataUrl } from './image'
 
 // ─────────────────────────────────────────────────────────────
@@ -77,10 +84,11 @@ function makeSupabaseBackend() {
       if (error) throw new Error(translate(error.message))
     },
 
-    async setThrone(session, { message, gif, title }) {
+    async setThrone(session, { phase, message, gif, title }) {
       const { error } = await supabase.rpc('set_throne', {
         p_player: session.id,
         p_pin: session.pin,
+        p_phase: phase,
         p_message: message ?? '',
         p_gif: gif ?? '',
         p_title: title ?? '',
@@ -196,18 +204,26 @@ function makeDemoBackend() {
       }
     },
 
-    async setThrone(session, { message, gif, title }) {
+    async setThrone(session, { phase, message, gif, title }) {
       const state = load()
-      const board = computeLeaderboard(allPlayers(state), matches, [...DEMO_BETS, ...state.bets])
-      if (board[0]?.player.id !== session.id) {
-        throw new Error('Solo el líder de la porra puede hacer esto. ¡Gana partidos!')
+      const allBets = [...DEMO_BETS, ...state.bets]
+      const filter = phase === 'KNOCKOUT' ? knockoutOnly : groupOnly
+      const board = computeLeaderboard(allPlayers(state), matches, allBets, filter)
+      const king = board[0]?.points > 0 ? board[0].player : null
+      if (king?.id !== session.id) {
+        throw new Error('Solo el campeón de esta fase puede hacer esto. ¡Gana partidos!')
       }
+      const prev = state.settings || DEMO_SETTINGS
+      const msg = (message || '').trim().slice(0, 80) || null
+      const img = (gif || '').trim() || null
+      const t = (title || '').trim().slice(0, 40) || null
       state.settings = {
-        title: (title || '').trim().slice(0, 40) || null,
-        title_by: (title || '').trim() ? session.id : null,
-        crown_message: (message || '').trim().slice(0, 80) || null,
-        crown_gif: (gif || '').trim() || null,
-        crown_message_by: session.id,
+        ...prev,
+        title: t,
+        title_by: t ? session.id : null,
+        ...(phase === 'KNOCKOUT'
+          ? { ko_message: msg, ko_gif: img, ko_message_by: session.id }
+          : { crown_message: msg, crown_gif: img, crown_message_by: session.id }),
       }
       save(state)
     },

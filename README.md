@@ -14,8 +14,10 @@ automáticos desde **football-data.org** vía GitHub Actions.
 - **Partidos siempre al día**: un workflow de GitHub sincroniza resultados cada 30 min.
   Los cruces de eliminatorias aparecen solos según se van conociendo.
 - **Grupos** con clasificación calculada en vivo y **cuadro de eliminatorias**.
-- **Leaderboard en tiempo real** con podio estilo Kahoot (Supabase Realtime: en cuanto
-  acaba un partido, la clasificación se mueve sola en el navegador de todos).
+- **Dos campeonatos** independientes con podio estilo Kahoot (Supabase Realtime: en
+  cuanto acaba un partido, la clasificación se mueve sola en el navegador de todos):
+  uno para la **fase de grupos** y otro para la **eliminatoria**, cada uno con su
+  propio rey y su propio bocadillo del trono.
 - **Puntuación**: 1 punto por acierto en grupos, 2 en eliminatorias
   (se cambia en `src/lib/config.js` → `POINTS`).
 

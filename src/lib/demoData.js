@@ -79,10 +79,10 @@ export function buildDemoMatches() {
     match({ group: 'Grupo C', matchday: 3, home: 'ARG', away: 'FRA', date: at(98) }),
     match({ group: 'Grupo C', matchday: 3, home: 'GER', away: 'POR', date: at(98) }),
 
-    // ── Eliminatorias: los cruces aparecen cuando se conocen
-    match({ stage: 'LAST_32', home: 'BRA', away: 'NED', date: at(150) }),
-    match({ stage: 'LAST_32', home: 'ENG', away: 'USA', date: at(155) }),
-    match({ stage: 'LAST_32', home: null, away: null, date: at(160) }),
+    // ── Eliminatorias: un par ya jugadas (campeonato de eliminatoria en marcha)
+    match({ stage: 'LAST_32', home: 'BRA', away: 'NED', date: at(-20), status: 'FINISHED', hs: 2, as: 1 }),
+    match({ stage: 'LAST_32', home: 'ENG', away: 'USA', date: at(-3), status: 'IN_PLAY', hs: 0, as: 1 }),
+    match({ stage: 'LAST_32', home: 'ARG', away: 'CRO', date: at(48) }),
     match({ stage: 'LAST_32', home: null, away: null, date: at(165) }),
     match({ stage: 'LAST_16', home: null, away: null, date: at(220) }),
     match({ stage: 'LAST_16', home: null, away: null, date: at(225) }),
@@ -99,13 +99,18 @@ export const DEMO_PLAYERS = [
   { id: 'demo-pablo', name: 'Pablo' },
 ]
 
-// El trono en la demo: Laura va primera y presume de ello
+// El trono en la demo: Laura manda en grupos, Carlos en la eliminatoria
 export const DEMO_SETTINGS = {
   title: 'La porra de los pringados',
   title_by: 'demo-laura',
+  // Bocadillo del campeón de grupos (Laura)
   crown_message: '¿Apostáis o decoráis? 😏👑',
   crown_gif: null,
   crown_message_by: 'demo-laura',
+  // Bocadillo del campeón de eliminatoria (Carlos)
+  ko_message: 'En la fase buena mando yo 💪',
+  ko_gif: null,
+  ko_message_by: 'demo-carlos',
 }
 
 // Reacciones de ejemplo a los partidos acabados
@@ -139,4 +144,13 @@ export const DEMO_BETS = [
   { player_id: 'demo-pablo', match_id: 8, pick: '1' },
   { player_id: 'demo-pablo', match_id: 13, pick: '2' },
   { player_id: 'demo-pablo', match_id: 14, pick: '2' },
+
+  // ── Eliminatoria: dieciseisavos (match 19 = BRA 2-1 NED, ya jugado)
+  { player_id: 'demo-carlos', match_id: 19, pick: '1' }, // acierta (+2) → campeón de eliminatoria
+  { player_id: 'demo-pablo', match_id: 19, pick: '1' }, // acierta (+2)
+  { player_id: 'demo-laura', match_id: 19, pick: '2' }, // falla
+  { player_id: 'demo-marta', match_id: 19, pick: '2' }, // falla
+  // Apuestas sobre el partido en directo (match 20) — aún no puntúan
+  { player_id: 'demo-carlos', match_id: 20, pick: '2' },
+  { player_id: 'demo-laura', match_id: 20, pick: '1' },
 ]

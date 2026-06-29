@@ -18,7 +18,7 @@ const TABS = [
 ]
 
 export default function App() {
-  const { session, logout, loading, error, demo, leaderboard, settings } = useStore()
+  const { session, logout, loading, error, demo, groupBoard, knockoutBoard, players, settings } = useStore()
   const [shitpost, setShitpost] = useState(false)
   // La pestaña vive en el hash de la URL (#groups, #leaderboard…) para poder compartir enlaces
   const [tab, setTabState] = useState(() => {
@@ -39,9 +39,18 @@ export default function App() {
   }, [])
   const Active = TABS.find((t) => t.key === tab).component
 
-  const myRank = session
-    ? leaderboard.findIndex((r) => r.player.id === session.id) + 1
+  // Reyes de cada campeonato (solo si ya han puntuado) y posición propia en grupos
+  const groupKing = groupBoard[0]?.points > 0 ? groupBoard[0].player.id : null
+  const koKing = knockoutBoard[0]?.points > 0 ? knockoutBoard[0].player.id : null
+  const reigns = []
+  if (session && groupKing === session.id) reigns.push('grupos')
+  if (session && koKing === session.id) reigns.push('eliminatoria')
+  const groupRank = session
+    ? groupBoard.findIndex((r) => r.player.id === session.id) + 1
     : 0
+  const titleAuthor = settings?.title_by
+    ? players.find((p) => p.id === settings.title_by)?.name
+    : null
 
   return (
     <div className="stadium-bg min-h-dvh">
@@ -56,13 +65,11 @@ export default function App() {
               Porra Mundial <span className="text-accent">2026</span>
               {shitpost && <span style={{ fontSize: '0.85em' }}> 🕶️</span>}
             </h1>
-            {/* El líder puede renombrar la porra: su título sustituye al lema */}
+            {/* Un rey puede renombrar la porra: su título sustituye al lema */}
             {settings?.title ? (
               <p className="truncate text-sm font-semibold text-amber-300">
                 «{settings.title}»
-                {settings.title_by &&
-                  leaderboard.find((r) => r.player.id === settings.title_by) &&
-                  ` — por ${leaderboard.find((r) => r.player.id === settings.title_by).player.name}`}
+                {titleAuthor && ` — por ${titleAuthor}`}
               </p>
             ) : (
               <p className="hidden text-sm text-blue-100 sm:block">
@@ -76,10 +83,14 @@ export default function App() {
                 <p className="max-w-32 truncate font-display text-lg font-bold leading-tight sm:max-w-none">
                   {session.name}
                 </p>
-                {myRank > 0 && (
-                  <p className="text-xs text-blue-100">
-                    {myRank === 1 ? '🏆 Líder' : `Puesto ${myRank}`}
+                {reigns.length > 0 ? (
+                  <p className="text-xs font-semibold text-amber-300">
+                    👑 Rey de {reigns.join(' y ')}
                   </p>
+                ) : (
+                  groupRank > 0 && (
+                    <p className="text-xs text-blue-100">Grupos · Nº {groupRank}</p>
+                  )
                 )}
               </div>
               <button

@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react'
-import { Crown, Medal, Target, Loader2, Sparkles, ImagePlus, Camera } from 'lucide-react'
+import { Crown, Medal, Target, Loader2, Sparkles, ImagePlus, Camera, Users, Swords } from 'lucide-react'
 import { useStore } from '../lib/store'
 import { compressImage } from '../lib/image'
+import { phaseHasResults } from '../lib/scoring'
 
-// Bocadillo del líder: solo existe mientras su autor sigue siendo el nº 1
+// Bocadillo del rey: solo existe mientras su autor siga siendo el nº 1 de su fase
 function SpeechBubble({ message, gif }) {
   const [gifBroken, setGifBroken] = useState(false)
   if (!message && (!gif || gifBroken)) return null
@@ -13,7 +14,7 @@ function SpeechBubble({ message, gif }) {
         {gif && !gifBroken && (
           <img
             src={gif}
-            alt="GIF del líder"
+            alt="Imagen del rey"
             loading="lazy"
             referrerPolicy="no-referrer"
             onError={() => setGifBroken(true)}
@@ -80,14 +81,18 @@ function Podium({ top, crown }) {
 
 const STICKERS = ['😂', '👑', '🔥', '💀', '🤡', '😎', '⚽', '🫵', '🥶', '😘']
 
-// Panel que solo ve el líder: mensaje + GIF del bocadillo y nombre de la porra
-function ThroneControls() {
+// Panel que solo ve el campeón de ESTA fase: su bocadillo + el nombre de la porra
+function ThroneControls({ phase }) {
   const { session, settings, setThrone, uploadCrownPhoto } = useStore()
-  // El mensaje/imagen solo se pre-rellenan si ya son tuyos; el bocadillo
-  // del rey anterior no se hereda. El título de la porra sí persiste.
-  const mine = settings?.crown_message_by === session?.id
-  const [message, setMessage] = useState(mine ? settings?.crown_message || '' : '')
-  const [gif, setGif] = useState(mine ? settings?.crown_gif || '' : '')
+  const knockout = phase === 'KNOCKOUT'
+  // Lee/escribe las columnas del bocadillo de la fase correspondiente
+  const bubbleBy = knockout ? settings?.ko_message_by : settings?.crown_message_by
+  const bubbleMsg = knockout ? settings?.ko_message : settings?.crown_message
+  const bubbleGif = knockout ? settings?.ko_gif : settings?.crown_gif
+  // El mensaje/imagen solo se pre-rellenan si ya son tuyos; el del rey anterior no se hereda
+  const mine = bubbleBy === session?.id
+  const [message, setMessage] = useState(mine ? bubbleMsg || '' : '')
+  const [gif, setGif] = useState(mine ? bubbleGif || '' : '')
   const [title, setTitle] = useState(settings?.title || '')
   const [busy, setBusy] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
@@ -117,7 +122,7 @@ function ThroneControls() {
     setBusy(true)
     setFeedback(null)
     try {
-      await setThrone({ message, gif, title })
+      await setThrone({ phase, message, gif, title })
       setFeedback({ ok: true, text: 'Trono actualizado 👑' })
     } catch (err) {
       setFeedback({ ok: false, text: err.message })
@@ -132,10 +137,12 @@ function ThroneControls() {
       className="animate-rise mx-auto mt-6 max-w-2xl rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-white p-4 shadow-md shadow-amber-100 sm:p-5"
     >
       <h3 className="flex items-center gap-2 font-display text-xl font-bold uppercase tracking-wide text-amber-700">
-        <Sparkles aria-hidden="true" className="size-5" /> Privilegios del trono
+        <Sparkles aria-hidden="true" className="size-5" />
+        Trono {knockout ? 'de la eliminatoria' : 'de la fase de grupos'}
       </h3>
       <p className="mb-4 mt-0.5 text-sm text-amber-800/70">
-        Eres el nº 1: tu bocadillo se muestra sobre tu nombre mientras nadie te destrone.
+        Eres el campeón {knockout ? 'de la eliminatoria' : 'de grupos'}: tu bocadillo se muestra
+        sobre tu nombre en este podio mientras nadie te destrone.
       </p>
 
       <div className="space-y-4">
@@ -260,31 +267,39 @@ function ThroneControls() {
   )
 }
 
-export default function Leaderboard() {
-  const { leaderboard, session, settings } = useStore()
+// Una clasificación (podio + tabla + trono) de una fase concreta
+function PhaseBoard({ phase, board }) {
+  const { session, matches, settings } = useStore()
+  const knockout = phase === 'KNOCKOUT'
 
-  if (leaderboard.length === 0) {
+  if (!phaseHasResults(matches, knockout)) {
     return (
       <div className="rounded-2xl border-2 border-dashed border-border-soft bg-white/60 p-10 text-center text-slate-500">
         <Medal aria-hidden="true" className="mx-auto mb-3 size-10 text-slate-300" />
-        Aún no hay nadie en la porra. ¡Sé el primero en registrarte!
+        {knockout
+          ? 'La eliminatoria aún no ha empezado. Cuando se juegue el primer cruce, aquí saldrá su campeonato.'
+          : 'Todavía no se ha jugado ningún partido de la fase de grupos.'}
       </div>
     )
   }
 
-  const leader = leaderboard[0]?.player
-  const isLeader = session && leader && session.id === leader.id
-  // El bocadillo solo se ve si su autor sigue en el trono
+  // El rey de la fase solo existe si alguien ya ha puntuado en ella
+  const king = board[0]?.points > 0 ? board[0].player : null
+  const bubbleBy = knockout ? settings?.ko_message_by : settings?.crown_message_by
   const crown =
-    settings && leader && settings.crown_message_by === leader.id
-      ? { message: settings.crown_message, gif: settings.crown_gif }
+    king && bubbleBy === king.id
+      ? {
+          message: knockout ? settings?.ko_message : settings?.crown_message,
+          gif: knockout ? settings?.ko_gif : settings?.crown_gif,
+        }
       : null
+  const isKing = session && king && session.id === king.id
 
   return (
-    <section aria-label="Clasificación">
-      <Podium top={leaderboard.slice(0, 3)} crown={crown} />
+    <div>
+      <Podium top={board.slice(0, 3)} crown={crown} />
 
-      {isLeader && <ThroneControls key={leader.id} />}
+      {isKing && <ThroneControls key={`${phase}-${king.id}`} phase={phase} />}
 
       <div className="mx-auto mt-6 max-w-2xl overflow-hidden rounded-2xl border-2 border-border-soft bg-white shadow-sm">
         <table className="w-full text-sm">
@@ -299,7 +314,7 @@ export default function Leaderboard() {
             </tr>
           </thead>
           <tbody>
-            {leaderboard.map((row, i) => {
+            {board.map((row, i) => {
               const me = session && row.player.id === session.id
               return (
                 <tr
@@ -336,9 +351,62 @@ export default function Leaderboard() {
       </div>
 
       <p className="mx-auto mt-4 max-w-2xl text-center text-xs text-slate-400">
-        1 punto por acierto en fase de grupos · 2 puntos en eliminatorias.
-        La clasificación se actualiza sola en cuanto acaba cada partido.
+        {knockout
+          ? '2 puntos por cada acierto de quién pasa la eliminatoria.'
+          : '1 punto por cada acierto en la fase de grupos.'}{' '}
+        Se actualiza sola en cuanto acaba cada partido.
       </p>
+    </div>
+  )
+}
+
+const PHASES = [
+  { key: 'GROUP', label: 'Grupos', icon: Users },
+  { key: 'KNOCKOUT', label: 'Eliminatoria', icon: Swords },
+]
+
+export default function Leaderboard() {
+  const { groupBoard, knockoutBoard } = useStore()
+  const [phase, setPhase] = useState('GROUP')
+
+  if (groupBoard.length === 0) {
+    return (
+      <div className="rounded-2xl border-2 border-dashed border-border-soft bg-white/60 p-10 text-center text-slate-500">
+        <Medal aria-hidden="true" className="mx-auto mb-3 size-10 text-slate-300" />
+        Aún no hay nadie en la porra. ¡Sé el primero en registrarte!
+      </div>
+    )
+  }
+
+  const board = phase === 'KNOCKOUT' ? knockoutBoard : groupBoard
+
+  return (
+    <section aria-label="Clasificación">
+      <div className="mx-auto mb-6 flex max-w-md gap-1 rounded-2xl bg-white p-1 shadow-sm" role="tablist">
+        {PHASES.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={phase === key}
+            onClick={() => setPhase(key)}
+            className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl py-2.5 font-display text-base font-semibold uppercase tracking-wide transition-colors sm:text-lg ${
+              phase === key
+                ? 'bg-primary text-on-primary shadow-md'
+                : 'text-slate-500 hover:bg-muted'
+            }`}
+          >
+            <Icon aria-hidden="true" className="size-4.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <h2 className="mb-4 text-center font-display text-2xl font-bold uppercase tracking-wide text-slate-600">
+        {phase === 'KNOCKOUT' ? 'Campeonato de eliminatoria' : 'Campeonato de la fase de grupos'}
+      </h2>
+
+      <PhaseBoard phase={phase} board={board} />
     </section>
   )
 }

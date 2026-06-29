@@ -28,8 +28,9 @@ export function pointsForMatch(m) {
   return isKnockout(m.stage) ? POINTS.KNOCKOUT : POINTS.GROUP
 }
 
-// Clasificación general: [{player, points, hits, played}] ordenada
-export function computeLeaderboard(players, matches, bets) {
+// Clasificación: [{player, points, hits, played}] ordenada.
+// filter(match) opcional para limitar a una fase (grupos / eliminatoria).
+export function computeLeaderboard(players, matches, bets, filter = null) {
   const byId = new Map(matches.map((m) => [m.id, m]))
   const rows = players.map((p) => ({ player: p, points: 0, hits: 0, played: 0 }))
   const rowByPlayer = new Map(rows.map((r) => [r.player.id, r]))
@@ -38,6 +39,7 @@ export function computeLeaderboard(players, matches, bets) {
     const m = byId.get(bet.match_id)
     const row = rowByPlayer.get(bet.player_id)
     if (!m || !row || !bet.pick) continue
+    if (filter && !filter(m)) continue
     const outcome = matchOutcome(m)
     if (!outcome) continue
     row.played += 1
@@ -54,6 +56,14 @@ export function computeLeaderboard(players, matches, bets) {
   )
   return rows
 }
+
+// Filtros de fase para las dos clasificaciones
+export const groupOnly = (m) => !isKnockout(m.stage)
+export const knockoutOnly = (m) => isKnockout(m.stage)
+
+// ¿Se ha jugado (acabado) algún partido de esta fase?
+export const phaseHasResults = (matches, knockout) =>
+  matches.some((m) => isFinished(m) && isKnockout(m.stage) === knockout)
 
 // Tabla de un grupo a partir de sus partidos (pts, dif. goles, goles a favor)
 export function computeGroupTable(groupMatches) {

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { backend } from './backend'
-import { computeLeaderboard } from './scoring'
+import { computeLeaderboard, groupOnly, knockoutOnly } from './scoring'
 
 const Ctx = createContext(null)
 const SESSION_KEY = 'porra-mundial-sesion'
@@ -113,8 +113,13 @@ export function StoreProvider({ children }) {
     await refresh(session)
   }
 
-  const leaderboard = useMemo(
-    () => computeLeaderboard(players, matches, bets),
+  // Dos campeonatos independientes: grupos y eliminatoria
+  const groupBoard = useMemo(
+    () => computeLeaderboard(players, matches, bets, groupOnly),
+    [players, matches, bets],
+  )
+  const knockoutBoard = useMemo(
+    () => computeLeaderboard(players, matches, bets, knockoutOnly),
     [players, matches, bets],
   )
 
@@ -127,7 +132,8 @@ export function StoreProvider({ children }) {
     myBets,
     settings,
     reactions,
-    leaderboard,
+    groupBoard,
+    knockoutBoard,
     loading,
     error,
     register,

@@ -162,29 +162,41 @@ grant execute on function
   public.my_bets(uuid, text)
 to anon, authenticated;
 
--- ── El trono: privilegios del líder ─────────────────────────
--- El nº 1 de la clasificación puede poner un mensaje/GIF en un
--- bocadillo sobre su nombre y renombrar la porra. El servidor
--- recalcula quién es el líder antes de aceptar nada.
+-- ── El trono: dos campeonatos independientes ────────────────
+-- Hay dos campeonatos (fase de grupos y eliminatoria), cada uno
+-- con su propio campeón. El nº 1 de CADA fase puede poner un
+-- bocadillo (texto/GIF/foto) sobre su nombre en el podio de esa
+-- fase, y cualquiera de los dos reyes puede renombrar la porra.
+-- El servidor recalcula quién lidera cada fase antes de aceptar.
 
 create table if not exists public.app_settings (
   id int primary key default 1 check (id = 1),
   title text,
   title_by uuid references public.players (id) on delete set null,
+  -- Bocadillo del campeón de la fase de grupos
   crown_message text,
   crown_gif text,
   crown_message_by uuid references public.players (id) on delete set null,
+  -- Bocadillo del campeón de la eliminatoria
+  ko_message text,
+  ko_gif text,
+  ko_message_by uuid references public.players (id) on delete set null,
   updated_at timestamptz not null default now()
 );
 insert into public.app_settings (id) values (1) on conflict do nothing;
+-- Columnas nuevas para despliegues que ya tenían la tabla
+alter table public.app_settings add column if not exists ko_message text;
+alter table public.app_settings add column if not exists ko_gif text;
+alter table public.app_settings add column if not exists ko_message_by uuid references public.players (id) on delete set null;
 
 alter table public.app_settings enable row level security;
 drop policy if exists settings_read on public.app_settings;
 create policy settings_read on public.app_settings for select using (true);
 
--- Líder actual: misma lógica de puntos que el frontend
--- (1 punto grupos / 2 eliminatorias; desempate por aciertos y nombre)
-create or replace function public.current_leader()
+-- Campeón de una fase (p_knockout = false → grupos, true → eliminatoria).
+-- Misma lógica de puntos que el frontend (1 grupos / 2 eliminatoria).
+-- Devuelve NULL si nadie ha puntuado aún en esa fase (no hay rey todavía).
+create or replace function public.phase_leader(p_knockout boolean)
 returns uuid
 language sql stable security definer set search_path = public
 as $$
@@ -193,35 +205,45 @@ as $$
       b.player_id,
       case
         when b.pick = case
-          when m.stage <> 'GROUP_STAGE' then
+          when p_knockout then
             case m.winner when 'HOME_TEAM' then '1' when 'AWAY_TEAM' then '2' else null end
           when m.home_score > m.away_score then '1'
           when m.home_score < m.away_score then '2'
           else 'X'
         end
-        then case when m.stage <> 'GROUP_STAGE' then 2 else 1 end
+        then case when p_knockout then 2 else 1 end
         else 0
       end as pts
     from bets b
-    join matches m on m.id = b.match_id and m.status = 'FINISHED'
+    join matches m on m.id = b.match_id
+      and m.status = 'FINISHED'
+      and (m.stage <> 'GROUP_STAGE') = p_knockout
   ),
   totals as (
     select player_id, sum(pts) as total, count(*) filter (where pts > 0) as hits
     from points group by player_id
   )
-  select p.id
-  from players p
-  left join totals t on t.player_id = p.id
-  order by coalesce(t.total, 0) desc, coalesce(t.hits, 0) desc, lower(p.name) asc
+  select t.player_id
+  from totals t
+  join players p on p.id = t.player_id
+  where t.total > 0
+  order by t.total desc, t.hits desc, lower(p.name) asc
   limit 1;
 $$;
 
+-- Compat: drop de la firma antigua del trono (5 args) antes de recrear
+drop function if exists public.set_throne(uuid, text, text, text, text);
+drop function if exists public.current_leader();
+
 create or replace function public.set_throne(
-  p_player uuid, p_pin text, p_message text, p_gif text, p_title text
+  p_player uuid, p_pin text, p_phase text, p_message text, p_gif text, p_title text
 )
 returns void
 language plpgsql security definer set search_path = public, extensions
 as $$
+declare
+  v_knockout boolean;
+  v_title text := nullif(trim(p_title), '');
 begin
   if not exists (
     select 1 from players
@@ -229,8 +251,12 @@ begin
   ) then
     raise exception 'PIN incorrecto';
   end if;
-  if current_leader() is distinct from p_player then
-    raise exception 'Solo el líder de la porra puede hacer esto. ¡Gana partidos!';
+  if p_phase not in ('GROUP', 'KNOCKOUT') then
+    raise exception 'Fase no válida';
+  end if;
+  v_knockout := (p_phase = 'KNOCKOUT');
+  if phase_leader(v_knockout) is distinct from p_player then
+    raise exception 'Solo el campeón de esta fase puede hacer esto. ¡Gana partidos!';
   end if;
   if length(coalesce(p_message, '')) > 80 then
     raise exception 'El mensaje no puede pasar de 80 caracteres';
@@ -245,20 +271,31 @@ begin
     raise exception 'El enlace del GIF es demasiado largo';
   end if;
 
-  update app_settings set
-    crown_message = nullif(trim(p_message), ''),
-    crown_gif = nullif(trim(p_gif), ''),
-    crown_message_by = p_player,
-    title = nullif(trim(p_title), ''),
-    title_by = case when nullif(trim(p_title), '') is null then null else p_player end,
-    updated_at = now()
-  where id = 1;
+  if v_knockout then
+    update app_settings set
+      ko_message = nullif(trim(p_message), ''),
+      ko_gif = nullif(trim(p_gif), ''),
+      ko_message_by = p_player,
+      title = v_title,
+      title_by = case when v_title is null then null else p_player end,
+      updated_at = now()
+    where id = 1;
+  else
+    update app_settings set
+      crown_message = nullif(trim(p_message), ''),
+      crown_gif = nullif(trim(p_gif), ''),
+      crown_message_by = p_player,
+      title = v_title,
+      title_by = case when v_title is null then null else p_player end,
+      updated_at = now()
+    where id = 1;
+  end if;
 end
 $$;
 
 grant execute on function
-  public.current_leader(),
-  public.set_throne(uuid, text, text, text, text)
+  public.phase_leader(boolean),
+  public.set_throne(uuid, text, text, text, text, text)
 to anon, authenticated;
 
 -- Fotos del bocadillo: bucket público con límite de 2 MB por archivo
