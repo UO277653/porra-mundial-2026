@@ -4,12 +4,27 @@ import { useStore } from '../lib/store'
 import { compressImage } from '../lib/image'
 import { phaseHasResults, rankBoard } from '../lib/scoring'
 
-// Bocadillo del rey: solo existe mientras su autor siga siendo el nº 1 de su fase
-function SpeechBubble({ message, gif }) {
+// Tamaños del bocadillo, de normal a absurdo
+const BUBBLE_SIZES = [
+  { value: 1, label: 'Normal' },
+  { value: 2, label: 'Grande' },
+  { value: 3, label: 'Enorme' },
+  { value: 4, label: 'Absurdo' },
+]
+const SIZE_STYLE = {
+  1: { text: 'text-sm', pad: 'px-3 py-2', img: 'max-h-32', maxW: '13rem' },
+  2: { text: 'text-lg', pad: 'px-4 py-2.5', img: 'max-h-44', maxW: '17rem' },
+  3: { text: 'text-2xl', pad: 'px-5 py-3', img: 'max-h-60', maxW: '22rem' },
+  4: { text: 'text-4xl leading-tight', pad: 'px-6 py-4', img: 'max-h-72', maxW: '28rem' },
+}
+
+// Bocadillo de un rey: cada co-campeón tiene el suyo, con su propio tamaño
+function SpeechBubble({ message, gif, size = 1 }) {
   const [gifBroken, setGifBroken] = useState(false)
   if (!message && (!gif || gifBroken)) return null
+  const s = SIZE_STYLE[size] || SIZE_STYLE[1]
   return (
-    <div className="animate-pop relative mb-3 max-w-52">
+    <div className="animate-pop relative mb-3" style={{ maxWidth: `min(${s.maxW}, 90vw)` }}>
       <div className="overflow-hidden rounded-2xl border-2 border-amber-300 bg-white shadow-lg shadow-amber-100">
         {gif && !gifBroken && (
           <img
@@ -18,11 +33,11 @@ function SpeechBubble({ message, gif }) {
             loading="lazy"
             referrerPolicy="no-referrer"
             onError={() => setGifBroken(true)}
-            className="max-h-32 w-full object-cover"
+            className={`${s.img} w-full object-cover`}
           />
         )}
         {message && (
-          <p className="px-3 py-2 text-center text-sm font-semibold text-foreground">
+          <p className={`${s.pad} ${s.text} break-words text-center font-semibold text-foreground`}>
             {message}
           </p>
         )}
@@ -38,7 +53,7 @@ function SpeechBubble({ message, gif }) {
 // Podio estilo Kahoot: 2º - 1º - 3º con alturas distintas.
 // Cada pedestal es un TRAMO de puntos: si varios empatan, comparten pedestal
 // (todos son 1º, 2º…). `tiers` = [grupoOro, grupoPlata, grupoBronce].
-function Podium({ tiers, crown }) {
+function Podium({ tiers, bubbleOf }) {
   const [gold, silver, bronze] = tiers
   const blocks = [
     { group: silver, place: 2, height: 'h-28', color: 'bg-silver', text: 'text-slate-600' },
@@ -52,20 +67,25 @@ function Podium({ tiers, crown }) {
         <div key={place} className="flex w-1/3 flex-col items-center">
           {group && group.length ? (
             <div className="animate-rise mb-2 flex flex-col items-center" style={{ animationDelay: `${place * 120}ms` }}>
-              {place === 1 && crown && <SpeechBubble message={crown.message} gif={crown.gif} />}
               {place === 1 && (
                 <Crown aria-hidden="true" className="mb-1 size-7 text-accent drop-shadow-sm" />
               )}
-              {group.map((r) => (
-                <span
-                  key={r.player.id}
-                  className={`max-w-full truncate font-display font-bold ${
-                    group.length > 1 ? 'text-base sm:text-lg' : 'text-xl sm:text-2xl'
-                  } ${place === 1 ? 'gold-shine' : 'text-foreground'}`}
-                >
-                  {r.player.name}
-                </span>
-              ))}
+              {group.map((r) => {
+                // Solo los co-campeones (oro) muestran bocadillo, cada uno el suyo
+                const bubble = place === 1 && bubbleOf ? bubbleOf(r.player.id) : null
+                return (
+                  <div key={r.player.id} className="flex max-w-full flex-col items-center">
+                    {bubble && <SpeechBubble message={bubble.message} gif={bubble.gif} size={bubble.size} />}
+                    <span
+                      className={`max-w-full truncate font-display font-bold ${
+                        group.length > 1 ? 'text-base sm:text-lg' : 'text-xl sm:text-2xl'
+                      } ${place === 1 ? 'gold-shine' : 'text-foreground'}`}
+                    >
+                      {r.player.name}
+                    </span>
+                  </div>
+                )
+              })}
               <span className="text-sm font-semibold text-slate-500 tabular-nums">
                 {group[0].points} pts
               </span>
@@ -88,16 +108,13 @@ const STICKERS = ['😂', '👑', '🔥', '💀', '🤡', '😎', '⚽', '🫵',
 
 // Panel que solo ve el campeón de ESTA fase: su bocadillo + el nombre de la porra
 function ThroneControls({ phase }) {
-  const { session, settings, setThrone, uploadCrownPhoto } = useStore()
+  const { session, settings, bubbles, setThrone, uploadCrownPhoto } = useStore()
   const knockout = phase === 'KNOCKOUT'
-  // Lee/escribe las columnas del bocadillo de la fase correspondiente
-  const bubbleBy = knockout ? settings?.ko_message_by : settings?.crown_message_by
-  const bubbleMsg = knockout ? settings?.ko_message : settings?.crown_message
-  const bubbleGif = knockout ? settings?.ko_gif : settings?.crown_gif
-  // El mensaje/imagen solo se pre-rellenan si ya son tuyos; el del rey anterior no se hereda
-  const mine = bubbleBy === session?.id
-  const [message, setMessage] = useState(mine ? bubbleMsg || '' : '')
-  const [gif, setGif] = useState(mine ? bubbleGif || '' : '')
+  // Tu propio bocadillo de esta fase (cada persona guarda el suyo)
+  const mine = bubbles.find((b) => b.player_id === session?.id && b.phase === phase)
+  const [message, setMessage] = useState(mine?.message || '')
+  const [gif, setGif] = useState(mine?.gif || '')
+  const [size, setSize] = useState(mine?.size || 1)
   const [title, setTitle] = useState(settings?.title || '')
   const [busy, setBusy] = useState(false)
   const [photoBusy, setPhotoBusy] = useState(false)
@@ -127,7 +144,7 @@ function ThroneControls({ phase }) {
     setBusy(true)
     setFeedback(null)
     try {
-      await setThrone({ phase, message, gif, title })
+      await setThrone({ phase, message, gif, title, size })
       setFeedback({ ok: true, text: 'Trono actualizado 👑' })
     } catch (err) {
       setFeedback({ ok: false, text: err.message })
@@ -234,6 +251,35 @@ function ThroneControls({ phase }) {
         </div>
 
         <div>
+          <span className="mb-1 block text-sm font-semibold text-slate-700">
+            Tamaño del bocadillo
+          </span>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Tamaño del bocadillo">
+            {BUBBLE_SIZES.map((s) => (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => setSize(s.value)}
+                aria-pressed={size === s.value}
+                className={`cursor-pointer rounded-xl border-2 px-3 py-2 font-display font-bold uppercase tracking-wide transition-all active:scale-95 ${
+                  size === s.value
+                    ? 'border-accent bg-accent text-white shadow-sm'
+                    : 'border-amber-200 bg-white text-slate-600 hover:border-accent'
+                }`}
+                style={{ fontSize: `${0.8 + (s.value - 1) * 0.22}rem` }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          {(message || gif) && (
+            <div className="mt-3 flex justify-center rounded-xl bg-amber-100/40 p-3">
+              <SpeechBubble message={message} gif={gif} size={size} />
+            </div>
+          )}
+        </div>
+
+        <div>
           <label htmlFor="throne-title" className="mb-1 block text-sm font-semibold text-slate-700">
             Renombrar la porra (solo texto, sale en la cabecera para todos)
           </label>
@@ -274,7 +320,7 @@ function ThroneControls({ phase }) {
 
 // Una clasificación (podio + tabla + trono) de una fase concreta
 function PhaseBoard({ phase, board }) {
-  const { session, matches, settings } = useStore()
+  const { session, matches, bubbles } = useStore()
   const knockout = phase === 'KNOCKOUT'
 
   if (!phaseHasResults(matches, knockout)) {
@@ -294,20 +340,17 @@ function PhaseBoard({ phase, board }) {
   const tiers = [1, 2, 3].map((rk) => positive.filter((r) => r.rank === rk))
   const leaders = tiers[0] // co-campeones (todos empatados en lo más alto)
 
-  // El bocadillo se ve si su autor sigue entre los co-campeones.
-  // Cualquiera de los empatados puede tocar el trono (poner foto, mensaje…).
-  const bubbleBy = knockout ? settings?.ko_message_by : settings?.crown_message_by
-  const crown = leaders.some((r) => r.player.id === bubbleBy)
-    ? {
-        message: knockout ? settings?.ko_message : settings?.crown_message,
-        gif: knockout ? settings?.ko_gif : settings?.crown_gif,
-      }
-    : null
+  // Cada co-campeón muestra SU bocadillo (solo mientras siga en lo más alto).
+  // Cualquiera de los empatados puede tocar su trono (foto, mensaje, tamaño…).
+  const bubbleOf = (playerId) => {
+    const b = bubbles.find((x) => x.player_id === playerId && x.phase === phase)
+    return b && (b.message || b.gif) ? { message: b.message, gif: b.gif, size: b.size || 1 } : null
+  }
   const isKing = session && leaders.some((r) => r.player.id === session.id)
 
   return (
     <div>
-      <Podium tiers={tiers} crown={crown} />
+      <Podium tiers={tiers} bubbleOf={bubbleOf} />
 
       {isKing && <ThroneControls key={`${phase}-${session.id}`} phase={phase} />}
 

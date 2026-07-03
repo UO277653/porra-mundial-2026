@@ -1,6 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import { DEMO_MODE, SUPABASE_URL, SUPABASE_ANON_KEY } from './config'
-import { buildDemoMatches, DEMO_PLAYERS, DEMO_BETS, DEMO_SETTINGS, DEMO_REACTIONS } from './demoData'
+import {
+  buildDemoMatches,
+  DEMO_PLAYERS,
+  DEMO_BETS,
+  DEMO_SETTINGS,
+  DEMO_REACTIONS,
+  DEMO_BUBBLES,
+} from './demoData'
 import {
   hasStarted,
   isBettable,
@@ -43,23 +50,25 @@ function makeSupabaseBackend() {
     },
 
     async fetchAll() {
-      const [players, matches, bets, settings, reactions] = await Promise.all([
+      const [players, matches, bets, settings, reactions, bubbles] = await Promise.all([
         supabase.from('players').select('id,name').order('name'),
         supabase.from('matches').select('*').order('utc_date'),
         supabase.from('bets').select('player_id,match_id,pick'),
         supabase.from('app_settings').select('*').eq('id', 1).maybeSingle(),
         supabase.from('reactions').select('player_id,match_id,emoji'),
+        supabase.from('throne_bubbles').select('player_id,phase,message,gif,size'),
       ])
       const err = players.error || matches.error || bets.error
       if (err) throw new Error(translate(err.message))
-      // settings/reactions pueden no existir aún (SQL del trono sin ejecutar):
-      // en ese caso la app funciona igual, solo sin esas funciones
+      // settings/reactions/bubbles pueden no existir aún (SQL del trono sin
+      // ejecutar): en ese caso la app funciona igual, solo sin esas funciones
       return {
         players: players.data,
         matches: matches.data,
         bets: bets.data,
         settings: settings.error ? null : settings.data,
         reactions: reactions.error ? [] : reactions.data,
+        bubbles: bubbles.error ? [] : bubbles.data,
       }
     },
 
@@ -84,7 +93,7 @@ function makeSupabaseBackend() {
       if (error) throw new Error(translate(error.message))
     },
 
-    async setThrone(session, { phase, message, gif, title }) {
+    async setThrone(session, { phase, message, gif, title, size }) {
       const { error } = await supabase.rpc('set_throne', {
         p_player: session.id,
         p_pin: session.pin,
@@ -92,6 +101,7 @@ function makeSupabaseBackend() {
         p_message: message ?? '',
         p_gif: gif ?? '',
         p_title: title ?? '',
+        p_size: size ?? 1,
       })
       if (error) throw new Error(translate(error.message))
     },
@@ -147,9 +157,9 @@ function makeDemoBackend() {
   const load = () => {
     try {
       const state = JSON.parse(localStorage.getItem(DEMO_KEY))
-      return { players: [], bets: [], settings: null, reactions: [], ...(state || {}) }
+      return { players: [], bets: [], settings: null, reactions: [], bubbles: [], ...(state || {}) }
     } catch {
-      return { players: [], bets: [], settings: null, reactions: [] }
+      return { players: [], bets: [], settings: null, reactions: [], bubbles: [] }
     }
   }
 
@@ -195,35 +205,43 @@ function makeDemoBackend() {
         const m = byId.get(b.match_id)
         return m && hasStarted(m) ? b : { ...b, pick: null }
       })
+      // El bocadillo es por persona y fase; los del estado local pisan a los demo
+      const bubbles = [...DEMO_BUBBLES, ...state.bubbles]
+      const merged = [...new Map(bubbles.map((b) => [`${b.player_id}-${b.phase}`, b])).values()]
       return {
         players,
         matches,
         bets,
         settings: state.settings || DEMO_SETTINGS,
         reactions: [...DEMO_REACTIONS, ...state.reactions],
+        bubbles: merged,
       }
     },
 
-    async setThrone(session, { phase, message, gif, title }) {
+    async setThrone(session, { phase, message, gif, title, size }) {
       const state = load()
       const allBets = [...DEMO_BETS, ...state.bets]
       const filter = phase === 'KNOCKOUT' ? knockoutOnly : groupOnly
       const board = computeLeaderboard(allPlayers(state), matches, allBets, filter)
-      const king = board[0]?.points > 0 ? board[0].player : null
-      if (king?.id !== session.id) {
+      const max = board[0]?.points || 0
+      const isKing = max > 0 && board.some((r) => r.points === max && r.player.id === session.id)
+      if (!isKing) {
         throw new Error('Solo el campeón de esta fase puede hacer esto. ¡Gana partidos!')
       }
-      const prev = state.settings || DEMO_SETTINGS
+      // Bocadillo de ESTA persona en ESTA fase (upsert)
       const msg = (message || '').trim().slice(0, 80) || null
       const img = (gif || '').trim() || null
+      const sz = Math.min(4, Math.max(1, size || 1))
+      state.bubbles = [
+        ...state.bubbles.filter((b) => !(b.player_id === session.id && b.phase === phase)),
+        { player_id: session.id, phase, message: msg, gif: img, size: sz },
+      ]
+      // El nombre de la porra sigue siendo global (una conquista compartida)
       const t = (title || '').trim().slice(0, 40) || null
       state.settings = {
-        ...prev,
+        ...(state.settings || DEMO_SETTINGS),
         title: t,
         title_by: t ? session.id : null,
-        ...(phase === 'KNOCKOUT'
-          ? { ko_message: msg, ko_gif: img, ko_message_by: session.id }
-          : { crown_message: msg, crown_gif: img, crown_message_by: session.id }),
       }
       save(state)
     },

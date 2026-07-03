@@ -99,19 +99,19 @@ export const DEMO_PLAYERS = [
   { id: 'demo-pablo', name: 'Pablo' },
 ]
 
-// El trono en la demo: Laura manda en grupos, Carlos en la eliminatoria
+// Nombre de la porra en la demo (conquista global de quien manda)
 export const DEMO_SETTINGS = {
   title: 'La porra de los pringados',
   title_by: 'demo-laura',
-  // Bocadillo del campeón de grupos (Laura)
-  crown_message: '¿Apostáis o decoráis? 😏👑',
-  crown_gif: null,
-  crown_message_by: 'demo-laura',
-  // Bocadillo del campeón de eliminatoria (Carlos)
-  ko_message: 'En la fase buena mando yo 💪',
-  ko_gif: null,
-  ko_message_by: 'demo-carlos',
 }
+
+// Bocadillos por persona y fase (cada co-campeón tiene el suyo, con su tamaño)
+export const DEMO_BUBBLES = [
+  { player_id: 'demo-laura', phase: 'GROUP', message: '¿Apostáis o decoráis? 😏👑', gif: null, size: 2 },
+  // Carlos y Pablo empatan primeros en eliminatoria: cada uno con su bocadillo
+  { player_id: 'demo-carlos', phase: 'KNOCKOUT', message: 'En la fase buena mando yo 💪', gif: null, size: 2 },
+  { player_id: 'demo-pablo', phase: 'KNOCKOUT', message: 'De aquí no me baja nadie 🧗', gif: null, size: 4 },
+]
 
 // Reacciones de ejemplo a los partidos acabados
 export const DEMO_REACTIONS = [

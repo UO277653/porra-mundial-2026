@@ -263,12 +263,39 @@ as $$
   ), false);
 $$;
 
--- Compat: drop de la firma antigua del trono (5 args) antes de recrear
+-- Bocadillo por persona y fase: cada co-campeón guarda el suyo (con tamaño).
+create table if not exists public.throne_bubbles (
+  player_id uuid not null references public.players (id) on delete cascade,
+  phase text not null check (phase in ('GROUP', 'KNOCKOUT')),
+  message text,
+  gif text,
+  size int not null default 1 check (size between 1 and 4),
+  updated_at timestamptz not null default now(),
+  primary key (player_id, phase)
+);
+
+alter table public.throne_bubbles enable row level security;
+drop policy if exists bubbles_read on public.throne_bubbles;
+create policy bubbles_read on public.throne_bubbles for select using (true);
+
+-- Migración: traer los bocadillos antiguos (hueco único en app_settings)
+-- a la nueva tabla por persona, si existían.
+insert into public.throne_bubbles (player_id, phase, message, gif, size)
+select crown_message_by, 'GROUP', crown_message, crown_gif, 1
+from public.app_settings where id = 1 and crown_message_by is not null
+on conflict (player_id, phase) do nothing;
+insert into public.throne_bubbles (player_id, phase, message, gif, size)
+select ko_message_by, 'KNOCKOUT', ko_message, ko_gif, 1
+from public.app_settings where id = 1 and ko_message_by is not null
+on conflict (player_id, phase) do nothing;
+
+-- Compat: drop de firmas antiguas del trono antes de recrear
 drop function if exists public.set_throne(uuid, text, text, text, text);
+drop function if exists public.set_throne(uuid, text, text, text, text, text);
 drop function if exists public.current_leader();
 
 create or replace function public.set_throne(
-  p_player uuid, p_pin text, p_phase text, p_message text, p_gif text, p_title text
+  p_player uuid, p_pin text, p_phase text, p_message text, p_gif text, p_title text, p_size int
 )
 returns void
 language plpgsql security definer set search_path = public, extensions
@@ -276,6 +303,7 @@ as $$
 declare
   v_knockout boolean;
   v_title text := nullif(trim(p_title), '');
+  v_size int := greatest(1, least(4, coalesce(p_size, 1)));
 begin
   if not exists (
     select 1 from players
@@ -303,32 +331,25 @@ begin
     raise exception 'El enlace del GIF es demasiado largo';
   end if;
 
-  if v_knockout then
-    update app_settings set
-      ko_message = nullif(trim(p_message), ''),
-      ko_gif = nullif(trim(p_gif), ''),
-      ko_message_by = p_player,
-      title = v_title,
-      title_by = case when v_title is null then null else p_player end,
-      updated_at = now()
-    where id = 1;
-  else
-    update app_settings set
-      crown_message = nullif(trim(p_message), ''),
-      crown_gif = nullif(trim(p_gif), ''),
-      crown_message_by = p_player,
-      title = v_title,
-      title_by = case when v_title is null then null else p_player end,
-      updated_at = now()
-    where id = 1;
-  end if;
+  -- Tu bocadillo de esta fase (upsert por persona)
+  insert into throne_bubbles (player_id, phase, message, gif, size)
+  values (p_player, p_phase, nullif(trim(p_message), ''), nullif(trim(p_gif), ''), v_size)
+  on conflict (player_id, phase)
+  do update set message = excluded.message, gif = excluded.gif, size = excluded.size, updated_at = now();
+
+  -- El nombre de la porra sigue siendo global (una conquista compartida)
+  update app_settings set
+    title = v_title,
+    title_by = case when v_title is null then null else p_player end,
+    updated_at = now()
+  where id = 1;
 end
 $$;
 
 grant execute on function
   public.phase_leader(boolean),
   public.is_phase_leader(uuid, boolean),
-  public.set_throne(uuid, text, text, text, text, text)
+  public.set_throne(uuid, text, text, text, text, text, int)
 to anon, authenticated;
 
 -- Fotos del bocadillo: bucket público con límite de 2 MB por archivo
@@ -409,6 +430,12 @@ end $$;
 do $$
 begin
   alter publication supabase_realtime add table public.reactions;
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.throne_bubbles;
 exception when duplicate_object then null;
 end $$;
 

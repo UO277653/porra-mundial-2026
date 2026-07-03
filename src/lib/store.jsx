@@ -18,18 +18,20 @@ export function StoreProvider({ children }) {
   const [bets, setBets] = useState([])
   const [settings, setSettings] = useState(null)
   const [reactions, setReactions] = useState([])
+  const [bubbles, setBubbles] = useState([])
   const [myBets, setMyBets] = useState(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   const refresh = useCallback(async (currentSession) => {
     try {
-      const { players, matches, bets, settings, reactions } = await backend.fetchAll()
+      const { players, matches, bets, settings, reactions, bubbles } = await backend.fetchAll()
       setPlayers(players)
       setMatches(matches)
       setBets(bets)
       setSettings(settings || null)
       setReactions(reactions || [])
+      setBubbles(bubbles || [])
       const s = currentSession !== undefined ? currentSession : readSession()
       if (s) {
         try {
@@ -132,6 +134,7 @@ export function StoreProvider({ children }) {
     myBets,
     settings,
     reactions,
+    bubbles,
     groupBoard,
     knockoutBoard,
     loading,
