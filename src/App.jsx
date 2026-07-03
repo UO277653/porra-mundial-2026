@@ -139,7 +139,7 @@ export default function App() {
                   : 'text-blue-100 hover:bg-white/15'
               }`}
             >
-              {shitpost ? '💀 MODO ON' : '🥁 Shitpost'}
+              {shitpost ? '💀 MODO ON' : '?'}
             </button>
           </div>
         </nav>
