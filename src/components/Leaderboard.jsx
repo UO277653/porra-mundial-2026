@@ -24,7 +24,10 @@ function SpeechBubble({ message, gif, size = 1 }) {
   if (!message && (!gif || gifBroken)) return null
   const s = SIZE_STYLE[size] || SIZE_STYLE[1]
   return (
-    <div className="animate-pop relative mb-3" style={{ maxWidth: `min(${s.maxW}, 90vw)` }}>
+    <div
+      className="animate-pop relative mb-3"
+      style={{ width: 'max-content', maxWidth: `min(${s.maxW}, 90vw)` }}
+    >
       <div className="overflow-hidden rounded-2xl border-2 border-amber-300 bg-white shadow-lg shadow-amber-100">
         {gif && !gifBroken && (
           <img
@@ -64,20 +67,22 @@ function Podium({ tiers, bubbleOf }) {
   return (
     <div className="mx-auto flex max-w-lg items-end justify-center gap-2 px-2 sm:gap-3" aria-label="Podio">
       {blocks.map(({ group, place, height, color, text }) => (
-        <div key={place} className="flex w-1/3 flex-col items-center">
+        <div key={place} className="flex w-1/3 min-w-0 flex-col items-center">
           {group && group.length ? (
             <div className="animate-rise mb-2 flex flex-col items-center" style={{ animationDelay: `${place * 120}ms` }}>
               {place === 1 && (
                 <Crown aria-hidden="true" className="mb-1 size-7 text-accent drop-shadow-sm" />
               )}
               {group.map((r) => {
-                // Solo los co-campeones (oro) muestran bocadillo, cada uno el suyo
+                // Solo los co-campeones (oro) muestran bocadillo, cada uno el suyo.
+                // El envoltorio NO limita el ancho: así el bocadillo puede
+                // ensancharse (salirse de la columna) según su tamaño.
                 const bubble = place === 1 && bubbleOf ? bubbleOf(r.player.id) : null
                 return (
-                  <div key={r.player.id} className="flex max-w-full flex-col items-center">
+                  <div key={r.player.id} className="flex flex-col items-center">
                     {bubble && <SpeechBubble message={bubble.message} gif={bubble.gif} size={bubble.size} />}
                     <span
-                      className={`max-w-full truncate font-display font-bold ${
+                      className={`max-w-36 truncate font-display font-bold ${
                         group.length > 1 ? 'text-base sm:text-lg' : 'text-xl sm:text-2xl'
                       } ${place === 1 ? 'gold-shine' : 'text-foreground'}`}
                     >
