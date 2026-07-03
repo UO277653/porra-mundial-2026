@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CalendarDays, Table2, GitFork, Trophy, LogOut, Loader2, FlaskConical, Newspaper } from 'lucide-react'
 import { useStore } from './lib/store'
+import { isCoLeader, rankBoard } from './lib/scoring'
 import Login from './components/Login'
 import Matches from './components/Matches'
 import Groups from './components/Groups'
@@ -39,14 +40,12 @@ export default function App() {
   }, [])
   const Active = TABS.find((t) => t.key === tab).component
 
-  // Reyes de cada campeonato (solo si ya han puntuado) y posición propia en grupos
-  const groupKing = groupBoard[0]?.points > 0 ? groupBoard[0].player.id : null
-  const koKing = knockoutBoard[0]?.points > 0 ? knockoutBoard[0].player.id : null
+  // Eres rey de una fase si empatas en lo más alto (co-campeón), no solo si vas 1º
   const reigns = []
-  if (session && groupKing === session.id) reigns.push('grupos')
-  if (session && koKing === session.id) reigns.push('eliminatoria')
+  if (session && isCoLeader(groupBoard, session.id)) reigns.push('grupos')
+  if (session && isCoLeader(knockoutBoard, session.id)) reigns.push('eliminatoria')
   const groupRank = session
-    ? groupBoard.findIndex((r) => r.player.id === session.id) + 1
+    ? rankBoard(groupBoard).find((r) => r.player.id === session.id)?.rank || 0
     : 0
   const titleAuthor = settings?.title_by
     ? players.find((p) => p.id === settings.title_by)?.name

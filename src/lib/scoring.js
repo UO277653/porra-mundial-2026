@@ -65,6 +65,24 @@ export const knockoutOnly = (m) => isKnockout(m.stage)
 export const phaseHasResults = (matches, knockout) =>
   matches.some((m) => isFinished(m) && isKnockout(m.stage) === knockout)
 
+// Rango con empates: mismos puntos → mismo puesto (1, 1, 2, 3…).
+// Anota cada fila con `rank` (puesto denso, 1 el mejor).
+export function rankBoard(board) {
+  const distinct = [...new Set(board.map((r) => r.points))] // ya viene ordenado desc
+  const rankOf = new Map(distinct.map((p, i) => [p, i + 1]))
+  return board.map((row) => ({ ...row, rank: rankOf.get(row.points) }))
+}
+
+// Co-líderes: TODOS los que empatan en el máximo de puntos (>0).
+// [] si aún nadie ha puntuado.
+export function coLeaders(board) {
+  const max = board[0]?.points || 0
+  return max > 0 ? board.filter((r) => r.points === max) : []
+}
+
+export const isCoLeader = (board, playerId) =>
+  coLeaders(board).some((r) => r.player.id === playerId)
+
 // Tabla de un grupo a partir de sus partidos (pts, dif. goles, goles a favor)
 export function computeGroupTable(groupMatches) {
   const table = new Map()

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Crown, Medal, Target, Loader2, Sparkles, ImagePlus, Camera, Users, Swords } from 'lucide-react'
 import { useStore } from '../lib/store'
 import { compressImage } from '../lib/image'
-import { phaseHasResults } from '../lib/scoring'
+import { phaseHasResults, rankBoard } from '../lib/scoring'
 
 // Bocadillo del rey: solo existe mientras su autor siga siendo el nº 1 de su fase
 function SpeechBubble({ message, gif }) {
@@ -35,34 +35,39 @@ function SpeechBubble({ message, gif }) {
   )
 }
 
-// Podio estilo Kahoot: 2º - 1º - 3º con alturas distintas
-function Podium({ top, crown }) {
-  const [first, second, third] = [top[0], top[1], top[2]]
+// Podio estilo Kahoot: 2º - 1º - 3º con alturas distintas.
+// Cada pedestal es un TRAMO de puntos: si varios empatan, comparten pedestal
+// (todos son 1º, 2º…). `tiers` = [grupoOro, grupoPlata, grupoBronce].
+function Podium({ tiers, crown }) {
+  const [gold, silver, bronze] = tiers
   const blocks = [
-    { row: second, place: 2, height: 'h-28', color: 'bg-silver', text: 'text-slate-600' },
-    { row: first, place: 1, height: 'h-40', color: 'bg-gold', text: 'text-amber-700' },
-    { row: third, place: 3, height: 'h-20', color: 'bg-bronze', text: 'text-orange-100' },
+    { group: silver, place: 2, height: 'h-28', color: 'bg-silver', text: 'text-slate-600' },
+    { group: gold, place: 1, height: 'h-40', color: 'bg-gold', text: 'text-amber-700' },
+    { group: bronze, place: 3, height: 'h-20', color: 'bg-bronze', text: 'text-orange-100' },
   ]
 
   return (
     <div className="mx-auto flex max-w-lg items-end justify-center gap-2 px-2 sm:gap-3" aria-label="Podio">
-      {blocks.map(({ row, place, height, color, text }) => (
+      {blocks.map(({ group, place, height, color, text }) => (
         <div key={place} className="flex w-1/3 flex-col items-center">
-          {row ? (
+          {group && group.length ? (
             <div className="animate-rise mb-2 flex flex-col items-center" style={{ animationDelay: `${place * 120}ms` }}>
               {place === 1 && crown && <SpeechBubble message={crown.message} gif={crown.gif} />}
               {place === 1 && (
                 <Crown aria-hidden="true" className="mb-1 size-7 text-accent drop-shadow-sm" />
               )}
-              <span
-                className={`max-w-full truncate font-display text-xl font-bold sm:text-2xl ${
-                  place === 1 ? 'gold-shine' : 'text-foreground'
-                }`}
-              >
-                {row.player.name}
-              </span>
+              {group.map((r) => (
+                <span
+                  key={r.player.id}
+                  className={`max-w-full truncate font-display font-bold ${
+                    group.length > 1 ? 'text-base sm:text-lg' : 'text-xl sm:text-2xl'
+                  } ${place === 1 ? 'gold-shine' : 'text-foreground'}`}
+                >
+                  {r.player.name}
+                </span>
+              ))}
               <span className="text-sm font-semibold text-slate-500 tabular-nums">
-                {row.points} pts
+                {group[0].points} pts
               </span>
             </div>
           ) : (
@@ -283,23 +288,28 @@ function PhaseBoard({ phase, board }) {
     )
   }
 
-  // El rey de la fase solo existe si alguien ya ha puntuado en ella
-  const king = board[0]?.points > 0 ? board[0].player : null
+  // Puesto con empates: quienes empatan comparten puesto (todos 1º, 2º…)
+  const ranked = rankBoard(board)
+  const positive = ranked.filter((r) => r.points > 0)
+  const tiers = [1, 2, 3].map((rk) => positive.filter((r) => r.rank === rk))
+  const leaders = tiers[0] // co-campeones (todos empatados en lo más alto)
+
+  // El bocadillo se ve si su autor sigue entre los co-campeones.
+  // Cualquiera de los empatados puede tocar el trono (poner foto, mensaje…).
   const bubbleBy = knockout ? settings?.ko_message_by : settings?.crown_message_by
-  const crown =
-    king && bubbleBy === king.id
-      ? {
-          message: knockout ? settings?.ko_message : settings?.crown_message,
-          gif: knockout ? settings?.ko_gif : settings?.crown_gif,
-        }
-      : null
-  const isKing = session && king && session.id === king.id
+  const crown = leaders.some((r) => r.player.id === bubbleBy)
+    ? {
+        message: knockout ? settings?.ko_message : settings?.crown_message,
+        gif: knockout ? settings?.ko_gif : settings?.crown_gif,
+      }
+    : null
+  const isKing = session && leaders.some((r) => r.player.id === session.id)
 
   return (
     <div>
-      <Podium top={board.slice(0, 3)} crown={crown} />
+      <Podium tiers={tiers} crown={crown} />
 
-      {isKing && <ThroneControls key={`${phase}-${king.id}`} phase={phase} />}
+      {isKing && <ThroneControls key={`${phase}-${session.id}`} phase={phase} />}
 
       <div className="mx-auto mt-6 max-w-2xl overflow-hidden rounded-2xl border-2 border-border-soft bg-white shadow-sm">
         <table className="w-full text-sm">
@@ -314,8 +324,9 @@ function PhaseBoard({ phase, board }) {
             </tr>
           </thead>
           <tbody>
-            {board.map((row, i) => {
+            {ranked.map((row, i) => {
               const me = session && row.player.id === session.id
+              const medal = row.points > 0 && row.rank <= 3
               return (
                 <tr
                   key={row.player.id}
@@ -324,13 +335,13 @@ function PhaseBoard({ phase, board }) {
                   }`}
                 >
                   <td className="px-4 py-3">
-                    {i < 3 ? (
+                    {medal ? (
                       <Medal
-                        aria-label={`Puesto ${i + 1}`}
-                        className={`size-5 ${i === 0 ? 'text-gold' : i === 1 ? 'text-silver' : 'text-bronze'}`}
+                        aria-label={`Puesto ${row.rank}`}
+                        className={`size-5 ${row.rank === 1 ? 'text-gold' : row.rank === 2 ? 'text-silver' : 'text-bronze'}`}
                       />
                     ) : (
-                      <span className="font-semibold text-slate-400 tabular-nums">{i + 1}</span>
+                      <span className="font-semibold text-slate-400 tabular-nums">{row.rank}</span>
                     )}
                   </td>
                   <td className="px-2 py-3 font-semibold text-foreground">

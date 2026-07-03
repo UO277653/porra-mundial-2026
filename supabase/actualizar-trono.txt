@@ -1,7 +1,8 @@
 -- ============================================================
--- PORRA MUNDIAL 2026 — Esquema de Supabase
--- Pega este archivo entero en el SQL Editor de tu proyecto
--- Supabase y pulsa RUN. Se puede ejecutar varias veces sin problema.
+-- PORRA MUNDIAL 2026 — Esquema COMPLETO de Supabase
+-- Pega TODO esto en el SQL Editor (pestaña nueva) y pulsa RUN.
+-- Es seguro y re-ejecutable: NO borra jugadores, apuestas ni resultados.
+-- Crea lo que falte (app_settings, reacciones, bucket de fotos, trono).
 -- ============================================================
 
 create extension if not exists pgcrypto with schema extensions;
@@ -163,11 +164,6 @@ grant execute on function
 to anon, authenticated;
 
 -- ── El trono: dos campeonatos independientes ────────────────
--- Hay dos campeonatos (fase de grupos y eliminatoria), cada uno
--- con su propio campeón. El nº 1 de CADA fase puede poner un
--- bocadillo (texto/GIF/foto) sobre su nombre en el podio de esa
--- fase, y cualquiera de los dos reyes puede renombrar la porra.
--- El servidor recalcula quién lidera cada fase antes de aceptar.
 
 create table if not exists public.app_settings (
   id int primary key default 1 check (id = 1),
@@ -194,8 +190,6 @@ drop policy if exists settings_read on public.app_settings;
 create policy settings_read on public.app_settings for select using (true);
 
 -- Campeón de una fase (p_knockout = false → grupos, true → eliminatoria).
--- Misma lógica de puntos que el frontend (1 grupos / 2 eliminatoria).
--- Devuelve NULL si nadie ha puntuado aún en esa fase (no hay rey todavía).
 create or replace function public.phase_leader(p_knockout boolean)
 returns uuid
 language sql stable security definer set search_path = public
