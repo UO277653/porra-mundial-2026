@@ -426,7 +426,7 @@ const PHASES = [
 
 export default function Leaderboard() {
   const { groupBoard, knockoutBoard } = useStore()
-  const [phase, setPhase] = useState('GROUP')
+  const [phase, setPhase] = useState('KNOCKOUT')
 
   if (groupBoard.length === 0) {
     return (
